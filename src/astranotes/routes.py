@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -8,6 +9,8 @@ from astranotes.services import (
     authenticate_user,
     create_user,
     get_user_by_id,
+    create_note,
+    search_notes,
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -141,6 +144,57 @@ async def architecture(request: Request):
             "user": current_user,
         },
     )
+
+
+@router.get("/api/notes")
+async def api_get_notes(
+    request: Request,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    include_deleted: bool = False,
+):
+    """Return notes for the current user with basic filtering.
+
+    Query params:
+    - `q`: substring search on title and content (case-insensitive)
+    - `date_from`, `date_to`: ISO date strings to filter `created_at`
+    - `include_deleted`: include soft-deleted notes
+    """
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+
+    dt_from = None
+    dt_to = None
+    try:
+        if date_from:
+            dt_from = datetime.fromisoformat(date_from)
+        if date_to:
+            dt_to = datetime.fromisoformat(date_to)
+    except ValueError:
+        dt_from = None
+        dt_to = None
+
+    notes = search_notes(
+        current_user.id, q=q, date_from=dt_from, date_to=dt_to, include_deleted=include_deleted
+    )
+
+    result = []
+    for n in notes:
+        result.append(
+            {
+                "id": n.id,
+                "user_id": n.user_id,
+                "title": n.title,
+                "content": n.content,
+                "created_at": n.created_at.isoformat(),
+                "updated_at": n.updated_at.isoformat(),
+                "is_deleted": bool(n.is_deleted),
+            }
+        )
+
+    return {"notes": result}
 
 
 @router.get("/api/health")

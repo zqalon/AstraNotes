@@ -68,5 +68,58 @@ def authenticate_user(identifier: str, password: str) -> User | None:
     return user
 
 
+from datetime import datetime
+from sqlalchemy import func
+
+
 def create_note(user_id: int, title: str, content: str) -> Note:
-    raise NotImplementedError("Create note service is not implemented yet.")
+    """Create and persist a new note for a user."""
+    note = Note(user_id=user_id, title=title, content=content)
+    with Session(get_engine()) as session:
+        session.add(note)
+        session.commit()
+        session.refresh(note)
+        return note
+
+
+def get_notes_for_user(user_id: int, include_deleted: bool = False) -> list[Note]:
+    """Return notes for a user, optionally including deleted notes."""
+    with Session(get_engine()) as session:
+        statement = select(Note).where(Note.user_id == user_id)
+        if not include_deleted:
+            statement = statement.where(Note.is_deleted == False)
+        return session.exec(statement).all()
+
+
+def search_notes(
+    user_id: int,
+    q: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    include_deleted: bool = False,
+) -> list[Note]:
+    """Search notes for a user with simple filtering options.
+
+    - q: substring match against title and content (case-insensitive)
+    - date_from / date_to: filter by `created_at` range (inclusive)
+    - include_deleted: include notes marked as deleted
+    """
+    with Session(get_engine()) as session:
+        statement = select(Note).where(Note.user_id == user_id)
+
+        if not include_deleted:
+            statement = statement.where(Note.is_deleted == False)
+
+        if q:
+            q_norm = q.strip().lower()
+            title_cond = func.lower(Note.title).contains(q_norm)
+            content_cond = func.lower(Note.content).contains(q_norm)
+            statement = statement.where(title_cond | content_cond)
+
+        if date_from:
+            statement = statement.where(Note.created_at >= date_from)
+        if date_to:
+            statement = statement.where(Note.created_at <= date_to)
+
+        statement = statement.order_by(Note.created_at.desc())
+        return session.exec(statement).all()
