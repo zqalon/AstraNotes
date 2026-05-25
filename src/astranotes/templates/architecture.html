@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="architecture-panel">
+  <h2>Architecture Overview - MVC Mapping</h2>
+  <p>This page maps the files and modules in the AstraNotes project to their respective Model-View-Controller (MVC) responsibilities.</p>
+
+  <div class="mvc-grid">
+    <div class="mvc-section model-section">
+      <h3>Model</h3>
+      <p>The Model represents the data and business logic of the application.</p>
+      <ul>
+        <li><strong>models.py</strong> - Defines data models and structures</li>
+        <li><strong>db.py</strong> - Handles database connections and operations</li>
+        <li><strong>services.py</strong> - Contains business logic and service layer functions</li>
+      </ul>
+    </div>
+
+    <div class="mvc-section view-section">
+      <h3>View</h3>
+      <p>The View handles the presentation and user interface.</p>
+      <ul>
+        <li><strong>templates/base.html</strong> - Base template with layout</li>
+        <li><strong>templates/index.html</strong> - Main workspace page</li>
+        <li><strong>templates/login.html</strong> - User login form</li>
+        <li><strong>templates/register.html</strong> - User registration form</li>
+        <li><strong>templates/profile.html</strong> - User profile page</li>
+        <li><strong>templates/settings.html</strong> - Application settings page</li>
+        <li><strong>static/style.css</strong> - Stylesheet for the application</li>
+      </ul>
+    </div>
+
+    <div class="mvc-section controller-section">
+      <h3>Controller</h3>
+      <p>The Controller manages user input and updates the model and view accordingly.</p>
+      <ul>
+        <li><strong>routes.py</strong> - Defines API routes and request handlers</li>
+        <li><strong>main.py</strong> - Application entry point and server setup</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="other-files">
+    <h3>Other Components</h3>
+    <ul>
+      <li><strong>__init__.py</strong> - Package initialization</li>
+      <li><strong>config.py</strong> - Application configuration settings</li>
+      <li><strong>tests/test_auth.py</strong> - Authentication tests</li>
+      <li><strong>tests/test_health.py</strong> - Health check tests</li>
+      <li><strong>docs/</strong> - Documentation files (architecture.md, getting_started.md, etc.)</li>
+      <li><strong>Planning/</strong> - Project planning and requirements documents</li>
+      <li><strong>requirements.txt</strong> - Python dependencies</li>
+      <li><strong>pyproject.toml</strong> - Project configuration</li>
+      <li><strong>Makefile</strong> - Build and development scripts</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

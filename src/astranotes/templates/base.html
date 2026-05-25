@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AstraNotes - {{ title }}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="app-sidebar">
+        <div class="brand">AstraNotes</div>
+        <nav>
+          <a href="/">Workspace</a>
+          <a href="/profile">Profile</a>
+          <a href="/settings">Settings</a>
+          <a href="/architecture">Architecture</a>
+          {% if user %}
+          <a href="/logout">Logout</a>
+          {% else %}
+          <a href="/login">Login</a>
+          <a href="/register">Register</a>
+          {% endif %}
+        </nav>
+      </aside>
+
+      <main class="app-main">
+        <header class="app-header">
+          <div class="header-title">{{ title }}</div>
+        </header>
+
+        <section class="app-content">
+          {% block content %}{% endblock %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

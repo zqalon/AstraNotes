@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="auth-panel">
+    <h2>Register</h2>
+    <p>Create a new AstraNotes account to save notes securely.</p>
+    {% if error %}
+      <div class="flash error">{{ error }}</div>
+    {% endif %}
+    <form method="post" class="auth-form">
+      <label>
+        Username
+        <input type="text" name="username" value="{{ username or '' }}" required />
+      </label>
+      <label>
+        Email
+        <input type="email" name="email" value="{{ email or '' }}" required />
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit">Register</button>
+    </form>
+  </div>
+{% endblock %}

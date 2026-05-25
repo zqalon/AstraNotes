@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="workspace-panel">
+    <div class="workspace-panel__hero">
+      <h2>Notes Workspace</h2>
+      {% if user %}
+        <p>Welcome back, {{ user.username }}. Your secure note workspace is ready for the next step of CRUD implementation.</p>
+      {% else %}
+        <p>Sign in or register to access your AstraNotes workspace. Notes will be available here once authentication and persistence are active.</p>
+      {% endif %}
+    </div>
+
+    <div class="workspace-placeholder">
+      <div class="placeholder-card">
+        <h3>Placeholder note</h3>
+        <p>This is a sample note preview. Your real notes will appear here after implementation of note creation and persistence.</p>
+      </div>
+      <div class="placeholder-card">
+        <h3>Organize your ideas</h3>
+        <p>Use categories, tags, and search from the sidebar once workspace functionality is added.</p>
+      </div>
+    </div>
+  </div>
+{% endblock %}
