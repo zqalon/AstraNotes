@@ -1,25 +1,213 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="workspace-panel">
-    <div class="workspace-panel__hero">
-      <h2>Notes Workspace</h2>
-      {% if user %}
-        <p>Welcome back, {{ user.username }}. Your secure note workspace is ready for the next step of CRUD implementation.</p>
-      {% else %}
-        <p>Sign in or register to access your AstraNotes workspace. Notes will be available here once authentication and persistence are active.</p>
-      {% endif %}
+<div class="workspace-container">
+  {% if not user %}
+    <div class="auth-prompt">
+      <h2>Welcome to AstraNotes</h2>
+      <p>Sign in or create an account to start taking notes.</p>
+      <div class="auth-buttons">
+        <a href="/login" class="btn btn-primary">Login</a>
+        <a href="/register" class="btn btn-secondary">Register</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="workspace-header">
+      <h2>Welcome, {{ user.username }}!</h2>
+      <div class="workspace-actions">
+        <button id="new-note-btn" class="btn btn-primary">+ New Note</button>
+        <input type="text" id="search-input" placeholder="Search notes..." class="search-box">
+      </div>
     </div>
 
-    <div class="workspace-placeholder">
-      <div class="placeholder-card">
-        <h3>Placeholder note</h3>
-        <p>This is a sample note preview. Your real notes will appear here after implementation of note creation and persistence.</p>
-      </div>
-      <div class="placeholder-card">
-        <h3>Organize your ideas</h3>
-        <p>Use categories, tags, and search from the sidebar once workspace functionality is added.</p>
+    <div class="workspace-content">
+      <div class="notes-list">
+        <div id="notes-container">
+          <p class="loading">Loading notes...</p>
+        </div>
       </div>
     </div>
-  </div>
+
+    <!-- New/Edit Note Modal -->
+    <div id="note-modal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title">New Note</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <form id="note-form" class="note-form">
+          <input type="hidden" id="note-id" value="">
+          <input type="text" id="note-title" placeholder="Note title..." required>
+          <textarea id="note-content" placeholder="Note content..." required></textarea>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Note</button>
+            <button type="button" class="btn btn-secondary" onclick="closeNoteModal()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+  const user = {{ 'true' if user else 'false' }};
+
+  if (user) {
+    let currentEditingNoteId = null;
+
+    // Load notes on page load
+    document.addEventListener('DOMContentLoaded', loadNotes);
+
+    // New note button
+    document.getElementById('new-note-btn').addEventListener('click', openNewNoteModal);
+
+    // Search
+    document.getElementById('search-input').addEventListener('input', debounce(searchNotes, 500));
+
+    // Note form submission
+    document.getElementById('note-form').addEventListener('submit', handleSaveNote);
+
+    // Close modal buttons
+    document.querySelectorAll('.close-btn').forEach(btn => {
+      btn.addEventListener('click', closeNoteModal);
+    });
+
+    async function loadNotes() {
+      try {
+        const response = await fetch('/api/notes');
+        const data = await response.json();
+        displayNotes(data.notes);
+      } catch (error) {
+        console.error('Error loading notes:', error);
+        document.getElementById('notes-container').innerHTML = '<p class="error">Failed to load notes</p>';
+      }
+    }
+
+    function displayNotes(notes) {
+      const container = document.getElementById('notes-container');
+      if (notes.length === 0) {
+        container.innerHTML = '<p class="empty-state">No notes yet. Create one to get started!</p>';
+        return;
+      }
+
+      container.innerHTML = notes.map(note => `
+        <div class="note-card" data-note-id="${note.id}">
+          <div class="note-header">
+            <h3 class="note-title">${escapeHtml(note.title)}</h3>
+            <div class="note-actions">
+              <button class="action-btn edit-btn" onclick="editNote(${note.id})">Edit</button>
+              <button class="action-btn delete-btn" onclick="deleteNote(${note.id})">Delete</button>
+            </div>
+          </div>
+          <p class="note-preview">${escapeHtml(note.content.substring(0, 100))}</p>
+          <p class="note-meta">Updated: ${new Date(note.updated_at).toLocaleDateString()}</p>
+        </div>
+      `).join('');
+    }
+
+    async function searchNotes() {
+      const query = document.getElementById('search-input').value;
+      try {
+        const response = await fetch(`/api/notes?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        displayNotes(data.notes);
+      } catch (error) {
+        console.error('Error searching notes:', error);
+      }
+    }
+
+    async function editNote(noteId) {
+      try {
+        const response = await fetch(`/api/notes/${noteId}`);
+        const note = await response.json();
+        
+        document.getElementById('note-id').value = note.id;
+        document.getElementById('note-title').value = note.title;
+        document.getElementById('note-content').value = note.content;
+        document.getElementById('modal-title').textContent = 'Edit Note';
+        currentEditingNoteId = noteId;
+        
+        document.getElementById('note-modal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error fetching note:', error);
+        alert('Failed to load note');
+      }
+    }
+
+    function openNewNoteModal() {
+      document.getElementById('note-id').value = '';
+      document.getElementById('note-title').value = '';
+      document.getElementById('note-content').value = '';
+      document.getElementById('modal-title').textContent = 'New Note';
+      currentEditingNoteId = null;
+      document.getElementById('note-modal').style.display = 'flex';
+    }
+
+    function closeNoteModal() {
+      document.getElementById('note-modal').style.display = 'none';
+      currentEditingNoteId = null;
+    }
+
+    async function handleSaveNote(e) {
+      e.preventDefault();
+      const noteId = document.getElementById('note-id').value;
+      const title = document.getElementById('note-title').value;
+      const content = document.getElementById('note-content').value;
+
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('content', content);
+
+      try {
+        const method = noteId ? 'PUT' : 'POST';
+        const url = noteId ? `/api/notes/${noteId}` : '/api/notes';
+        
+        const response = await fetch(url, {
+          method: method,
+          body: formData
+        });
+
+        if (response.ok) {
+          closeNoteModal();
+          loadNotes();
+        } else {
+          alert('Failed to save note');
+        }
+      } catch (error) {
+        console.error('Error saving note:', error);
+        alert('Failed to save note');
+      }
+    }
+
+    async function deleteNote(noteId) {
+      if (!confirm('Delete this note?')) return;
+
+      try {
+        const response = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+        if (response.ok) {
+          loadNotes();
+        } else {
+          alert('Failed to delete note');
+        }
+      } catch (error) {
+        console.error('Error deleting note:', error);
+        alert('Failed to delete note');
+      }
+    }
+
+    function debounce(func, delay) {
+      let timeoutId;
+      return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func(...args), delay);
+      };
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  }
+</script>
 {% endblock %}

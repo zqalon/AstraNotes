@@ -123,3 +123,53 @@ def search_notes(
 
         statement = statement.order_by(Note.created_at.desc())
         return session.exec(statement).all()
+
+
+def get_note_by_id(note_id: int, user_id: int) -> Note | None:
+    """Get a note by ID, ensuring it belongs to the specified user."""
+    with Session(get_engine()) as session:
+        statement = select(Note).where(Note.id == note_id).where(Note.user_id == user_id)
+        return session.exec(statement).first()
+
+
+def update_note(note_id: int, user_id: int, title: str | None = None, content: str | None = None) -> Note | None:
+    """Update a note's title and/or content. Returns the updated note or None if not found."""
+    with Session(get_engine()) as session:
+        note = session.exec(select(Note).where(Note.id == note_id).where(Note.user_id == user_id)).first()
+        if not note:
+            return None
+        if title is not None:
+            note.title = title
+        if content is not None:
+            note.content = content
+        note.updated_at = datetime.utcnow()
+        session.add(note)
+        session.commit()
+        session.refresh(note)
+        return note
+
+
+def delete_note(note_id: int, user_id: int) -> bool:
+    """Soft-delete a note by setting is_deleted flag. Returns True if successful."""
+    with Session(get_engine()) as session:
+        note = session.exec(select(Note).where(Note.id == note_id).where(Note.user_id == user_id)).first()
+        if not note:
+            return False
+        note.is_deleted = True
+        note.updated_at = datetime.utcnow()
+        session.add(note)
+        session.commit()
+        return True
+
+
+def restore_note(note_id: int, user_id: int) -> bool:
+    """Restore a soft-deleted note. Returns True if successful."""
+    with Session(get_engine()) as session:
+        note = session.exec(select(Note).where(Note.id == note_id).where(Note.user_id == user_id)).first()
+        if not note:
+            return False
+        note.is_deleted = False
+        note.updated_at = datetime.utcnow()
+        session.add(note)
+        session.commit()
+        return True
