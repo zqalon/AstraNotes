@@ -1,9 +1,11 @@
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.responses import Response
 
 from astranotes.services import (
     authenticate_user,
@@ -21,6 +23,35 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 router = APIRouter()
 
 
+def render_template(
+    name: str, context: dict[str, Any], status_code: int = 200
+) -> Response:
+    """
+    Safe wrapper for template rendering to prevent API misuse.
+    
+    Manually renders templates using Jinja2 to avoid Starlette 0.37.2 API issues.
+    
+    Args:
+        name: Template filename (e.g., "index.html")
+        context: Context dict (must include 'request' from FastAPI)
+        status_code: HTTP status code (default 200)
+    
+    Returns:
+        HTMLResponse with the rendered template
+    """
+    if not isinstance(name, str):
+        raise TypeError(f"Template name must be str, got {type(name).__name__}")
+    if not isinstance(context, dict):
+        raise TypeError(f"Context must be dict, got {type(context).__name__}")
+    if "request" not in context:
+        raise ValueError("Context must include 'request' key")
+    
+    # Get the template and render it manually
+    template = templates.get_template(name)
+    content = template.render(context)
+    return HTMLResponse(content, status_code=status_code)
+
+
 def get_current_user(request: Request):
     user_id = request.session.get("user_id")
     if not user_id:
@@ -31,7 +62,7 @@ def get_current_user(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def workspace(request: Request):
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
+    return render_template(
         "index.html",
         {
             "request": request,
@@ -44,7 +75,7 @@ async def workspace(request: Request):
 @router.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request):
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
+    return render_template(
         "profile.html",
         {
             "request": request,
@@ -57,7 +88,7 @@ async def profile(request: Request):
 @router.get("/settings", response_class=HTMLResponse)
 async def settings(request: Request):
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
+    return render_template(
         "settings.html",
         {
             "request": request,
@@ -69,7 +100,7 @@ async def settings(request: Request):
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse(
+    return render_template(
         "register.html",
         {"request": request, "title": "Register", "error": None},
     )
@@ -87,7 +118,7 @@ async def register_user(
         request.session["user_id"] = user.id
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
     except ValueError as exc:
-        return templates.TemplateResponse(
+        return render_template(
             "register.html",
             {
                 "request": request,
@@ -102,7 +133,7 @@ async def register_user(
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse(
+    return render_template(
         "login.html",
         {"request": request, "title": "Login", "error": None},
     )
@@ -116,7 +147,7 @@ async def login_user(
 ):
     user = authenticate_user(identifier=identifier, password=password)
     if user is None:
-        return templates.TemplateResponse(
+        return render_template(
             "login.html",
             {
                 "request": request,
@@ -140,7 +171,7 @@ async def logout(request: Request):
 @router.get("/architecture", response_class=HTMLResponse)
 async def architecture(request: Request):
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
+    return render_template(
         "architecture.html",
         {
             "request": request,
