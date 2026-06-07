@@ -7,15 +7,22 @@ from sqlmodel import Session, select
 from astranotes.db import get_engine
 from astranotes.models import User, Note
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use argon2 for new passwords, support both argon2 and bcrypt for verification
+# This allows existing bcrypt-hashed passwords to work while new ones use argon2
+pwd_context = CryptContext(
+    schemes=["argon2", "bcrypt"],
+    deprecated="auto"
+)
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against a hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
+    """Hash a password for storage using argon2."""
     return pwd_context.hash(password)
 
 
