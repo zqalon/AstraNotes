@@ -13,7 +13,7 @@
 ---
 
 ## Product Vision
-AstraNotes is a secure, multi-interface note management application designed to help users create, organize, search, and manage personal notes. The product emphasizes security (end-to-end encryption, zero-knowledge architecture) and provides multiple access interfaces: CLI, desktop GUI, and future web/mobile support.
+AstraNotes is a secure, multi-interface note management application designed to help users create, organize, search, and manage personal notes. 
 
 **MVP Focus:** Core web-based note-taking with user authentication and CRUD operations (Sprint 1-2).
 
