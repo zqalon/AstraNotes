@@ -28,9 +28,9 @@
    - F-002e: Bulk operations for multiple notes ❌
 
 **F-003: Note Organization**
-   - F-003a: Categorization system (folders/tags) ❌
+   - F-003a: Categorization system (folders/tags) ✅
    - F-003b: Search functionality (full-text search across titles and content) ✅
-   - F-003c: Sorting and filtering options (by date, category, title) ⧗
+   - F-003c: Sorting and filtering options (by date, category, title) ✅
    - F-003d: Note versioning (keep history of changes) ❌
    - F-003e: Favorites/bookmarking system ❌
 
