@@ -19,7 +19,6 @@
    - F-001b: Secure login/logout functionality ✅
    - F-001c: Password reset capability ❌
    - F-001d: Session management with configurable timeouts ✅
-   - F-001e: Role-based access control (future extensibility for admin roles) ❌
 
 **F-002: Note CRUD Operations**
    - F-002a: Create new notes with title, content, and optional metadata ✅
@@ -40,12 +39,6 @@
    - F-004b: Interactive menus and prompts ❌
    - F-004c: Keyboard shortcuts for power users ❌
 
-**F-005: Graphical User Interface (GUI)**
-   - F-005a: Cross-platform desktop application ❌
-   - F-005b: Intuitive note editor with formatting tools ❌
-   - F-005c: Tree view for note organization ❌
-   - F-005d: Search interface with filters ⧗
-
 **F-006: Web Interface (Future)**
    - F-006a: Browser-based access ✅
    - F-006b: Responsive design for mobile devices ⧗
@@ -56,8 +49,6 @@
 
 **NF-001: User Experience**
    - NF-001a: Intuitive interface design ✅
-   - NF-001b: Keyboard shortcuts and accessibility features ❌
-   - NF-001c: Offline capability (future) ❌
    - NF-001d: Multi-language support (future) ❌
 
 **NF-002: Maintainability**

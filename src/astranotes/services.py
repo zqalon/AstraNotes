@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from sqlmodel import Session, select
 
 from astranotes.db import get_engine
-from astranotes.models import User, Note
+from astranotes.models import User, Note, Tag, NoteTag
 
 # Use argon2 for password hashing (modern, no length limits)
 pwd_context = CryptContext(
@@ -102,12 +102,16 @@ def search_notes(
     q: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    tag_ids: list[int] | None = None,
+    sort_by: str = "created_at",
     include_deleted: bool = False,
 ) -> list[Note]:
-    """Search notes for a user with simple filtering options.
+    """Search notes for a user with filtering and sorting options (F-003b, F-003c).
 
     - q: substring match against title and content (case-insensitive)
     - date_from / date_to: filter by `created_at` range (inclusive)
+    - tag_ids: filter by tags (returns notes with ANY of these tags)
+    - sort_by: "created_at", "updated_at", or "title" (default: "created_at")
     - include_deleted: include notes marked as deleted
     """
     with Session(get_engine()) as session:
@@ -127,7 +131,18 @@ def search_notes(
         if date_to:
             statement = statement.where(Note.created_at <= date_to)
 
-        statement = statement.order_by(Note.created_at.desc())
+        # Filter by tags if provided
+        if tag_ids:
+            statement = statement.join(NoteTag).where(NoteTag.tag_id.in_(tag_ids)).distinct()
+
+        # Apply sorting
+        if sort_by == "updated_at":
+            statement = statement.order_by(Note.updated_at.desc())
+        elif sort_by == "title":
+            statement = statement.order_by(Note.title.asc())
+        else:  # default to created_at
+            statement = statement.order_by(Note.created_at.desc())
+
         return session.exec(statement).all()
 
 
@@ -177,5 +192,104 @@ def restore_note(note_id: int, user_id: int) -> bool:
         note.is_deleted = False
         note.updated_at = datetime.utcnow()
         session.add(note)
+        session.commit()
+        return True
+
+
+# Tag Management Functions (F-003a)
+
+def create_or_get_tag(user_id: int, tag_name: str) -> Tag:
+    """Create a tag or return it if it already exists for the user."""
+    tag_name = tag_name.strip().lower()
+    with Session(get_engine()) as session:
+        statement = select(Tag).where(Tag.user_id == user_id).where(Tag.name == tag_name)
+        existing_tag = session.exec(statement).first()
+        if existing_tag:
+            return existing_tag
+        
+        tag = Tag(user_id=user_id, name=tag_name)
+        session.add(tag)
+        session.commit()
+        session.refresh(tag)
+        return tag
+
+
+def get_tags_for_user(user_id: int) -> list[Tag]:
+    """Get all tags for a user."""
+    with Session(get_engine()) as session:
+        statement = select(Tag).where(Tag.user_id == user_id).order_by(Tag.name)
+        return session.exec(statement).all()
+
+
+def get_tags_for_note(note_id: int) -> list[Tag]:
+    """Get all tags for a specific note."""
+    with Session(get_engine()) as session:
+        statement = (
+            select(Tag)
+            .join(NoteTag)
+            .where(NoteTag.note_id == note_id)
+            .order_by(Tag.name)
+        )
+        return session.exec(statement).all()
+
+
+def add_tag_to_note(note_id: int, tag_id: int, user_id: int) -> bool:
+    """Add a tag to a note. Returns False if note doesn't belong to user or tag doesn't belong to user."""
+    with Session(get_engine()) as session:
+        # Verify note belongs to user
+        note = session.exec(select(Note).where(Note.id == note_id).where(Note.user_id == user_id)).first()
+        if not note:
+            return False
+        
+        # Verify tag belongs to user
+        tag = session.exec(select(Tag).where(Tag.id == tag_id).where(Tag.user_id == user_id)).first()
+        if not tag:
+            return False
+        
+        # Check if tag already added to note
+        existing = session.exec(
+            select(NoteTag).where(NoteTag.note_id == note_id).where(NoteTag.tag_id == tag_id)
+        ).first()
+        if existing:
+            return True  # Already tagged, no-op
+        
+        # Add the tag
+        note_tag = NoteTag(note_id=note_id, tag_id=tag_id)
+        session.add(note_tag)
+        session.commit()
+        return True
+
+
+def remove_tag_from_note(note_id: int, tag_id: int, user_id: int) -> bool:
+    """Remove a tag from a note. Returns False if note doesn't belong to user."""
+    with Session(get_engine()) as session:
+        # Verify note belongs to user
+        note = session.exec(select(Note).where(Note.id == note_id).where(Note.user_id == user_id)).first()
+        if not note:
+            return False
+        
+        # Remove the tag association
+        note_tag = session.exec(
+            select(NoteTag).where(NoteTag.note_id == note_id).where(NoteTag.tag_id == tag_id)
+        ).first()
+        if note_tag:
+            session.delete(note_tag)
+            session.commit()
+        return True
+
+
+def delete_tag(tag_id: int, user_id: int) -> bool:
+    """Delete a tag (and all its associations). Returns False if tag doesn't belong to user."""
+    with Session(get_engine()) as session:
+        tag = session.exec(select(Tag).where(Tag.id == tag_id).where(Tag.user_id == user_id)).first()
+        if not tag:
+            return False
+        
+        # Delete all associations
+        note_tags = session.exec(select(NoteTag).where(NoteTag.tag_id == tag_id)).all()
+        for nt in note_tags:
+            session.delete(nt)
+        
+        session.delete(tag)
         session.commit()
         return True

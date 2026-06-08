@@ -17,6 +17,12 @@ from astranotes.services import (
     update_note,
     delete_note,
     restore_note,
+    create_or_get_tag,
+    get_tags_for_user,
+    get_tags_for_note,
+    add_tag_to_note,
+    remove_tag_from_note,
+    delete_tag,
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -187,13 +193,17 @@ async def api_get_notes(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    tag_ids: str | None = None,
+    sort_by: str = "created_at",
     include_deleted: bool = False,
 ):
-    """Return notes for the current user with basic filtering.
+    """Return notes for the current user with filtering and sorting (F-003b, F-003c).
 
     Query params:
     - `q`: substring search on title and content (case-insensitive)
     - `date_from`, `date_to`: ISO date strings to filter `created_at`
+    - `tag_ids`: comma-separated list of tag IDs to filter by
+    - `sort_by`: sort order - "created_at" (default), "updated_at", or "title"
     - `include_deleted`: include soft-deleted notes
     """
     current_user = get_current_user(request)
@@ -211,12 +221,27 @@ async def api_get_notes(
         dt_from = None
         dt_to = None
 
+    # Parse tag_ids
+    parsed_tag_ids = None
+    if tag_ids:
+        try:
+            parsed_tag_ids = [int(tid) for tid in tag_ids.split(",") if tid.strip()]
+        except ValueError:
+            parsed_tag_ids = None
+
     notes = search_notes(
-        current_user.id, q=q, date_from=dt_from, date_to=dt_to, include_deleted=include_deleted
+        current_user.id,
+        q=q,
+        date_from=dt_from,
+        date_to=dt_to,
+        tag_ids=parsed_tag_ids,
+        sort_by=sort_by,
+        include_deleted=include_deleted,
     )
 
     result = []
     for n in notes:
+        tags = get_tags_for_note(n.id)
         result.append(
             {
                 "id": n.id,
@@ -226,6 +251,7 @@ async def api_get_notes(
                 "created_at": n.created_at.isoformat(),
                 "updated_at": n.updated_at.isoformat(),
                 "is_deleted": bool(n.is_deleted),
+                "tags": [{"id": t.id, "name": t.name} for t in tags],
             }
         )
 
@@ -335,3 +361,74 @@ async def api_restore_note(request: Request, note_id: int):
         return {"error": "Note not found"}, 404
 
     return {"message": "Note restored successfully"}
+
+
+# Tag API Endpoints (F-003a - Categorization)
+
+@router.get("/api/tags")
+async def api_get_tags(request: Request):
+    """Get all tags for the current user."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return {"error": "Unauthorized"}, 401
+
+    tags = get_tags_for_user(current_user.id)
+    return {
+        "tags": [{"id": t.id, "name": t.name} for t in tags]
+    }
+
+
+@router.post("/api/tags")
+async def api_create_tag(request: Request, name: str = Form(...)):
+    """Create or get a tag for the current user."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return {"error": "Unauthorized"}, 401
+
+    if not name or not name.strip():
+        return {"error": "Tag name cannot be empty"}, 400
+
+    tag = create_or_get_tag(current_user.id, name)
+    return {"tag": {"id": tag.id, "name": tag.name}}
+
+
+@router.delete("/api/tags/{tag_id}")
+async def api_delete_tag(request: Request, tag_id: int):
+    """Delete a tag."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return {"error": "Unauthorized"}, 401
+
+    success = delete_tag(tag_id, current_user.id)
+    if not success:
+        return {"error": "Tag not found"}, 404
+
+    return {"message": "Tag deleted successfully"}
+
+
+@router.post("/api/notes/{note_id}/tags")
+async def api_add_tag_to_note(request: Request, note_id: int, tag_id: int = Form(...)):
+    """Add a tag to a note."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return {"error": "Unauthorized"}, 401
+
+    success = add_tag_to_note(note_id, tag_id, current_user.id)
+    if not success:
+        return {"error": "Note or tag not found"}, 404
+
+    return {"message": "Tag added successfully"}
+
+
+@router.delete("/api/notes/{note_id}/tags/{tag_id}")
+async def api_remove_tag_from_note(request: Request, note_id: int, tag_id: int):
+    """Remove a tag from a note."""
+    current_user = get_current_user(request)
+    if not current_user:
+        return {"error": "Unauthorized"}, 401
+
+    success = remove_tag_from_note(note_id, tag_id, current_user.id)
+    if not success:
+        return {"error": "Note not found"}, 404
+
+    return {"message": "Tag removed successfully"}

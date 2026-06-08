@@ -17,6 +17,18 @@
       <div class="workspace-actions">
         <button id="new-note-btn" class="btn btn-primary">+ New Note</button>
         <input type="text" id="search-input" placeholder="Search notes..." class="search-box">
+        
+        <!-- Sort Dropdown -->
+        <select id="sort-select" class="sort-select">
+          <option value="updated_at">Sort by: Most Recent</option>
+          <option value="created_at">Sort by: Created</option>
+          <option value="title">Sort by: Title</option>
+        </select>
+
+        <!-- Tag Filter Dropdown -->
+        <select id="tag-filter-select" class="tag-filter-select" multiple>
+          <option value="">Filter by tags...</option>
+        </select>
       </div>
     </div>
 
@@ -39,6 +51,18 @@
           <input type="hidden" id="note-id" value="">
           <input type="text" id="note-title" placeholder="Note title..." required>
           <textarea id="note-content" placeholder="Note content..." required></textarea>
+          
+          <!-- Tag Management Section -->
+          <div class="tag-management">
+            <label>Tags:</label>
+            <div id="available-tags" class="available-tags"></div>
+            <div class="tag-input-section">
+              <input type="text" id="new-tag-input" placeholder="Add new tag..." class="tag-input">
+              <button type="button" id="add-tag-btn" class="btn btn-secondary">Add Tag</button>
+            </div>
+            <div id="note-tags" class="note-tags"></div>
+          </div>
+
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Save Note</button>
             <button type="button" class="btn btn-secondary" onclick="closeNoteModal()">Cancel</button>
@@ -52,11 +76,21 @@
 <script>
   const user = {{ 'true' if user else 'false' }};
   let currentEditingNoteId = null;
+  let selectedTags = new Set();
+  let allTags = [];
 
   // Define functions in global scope
   async function loadNotes() {
     try {
-      const response = await fetch('/api/notes');
+      const sortBy = document.getElementById('sort-select').value || 'updated_at';
+      const selectedTagIds = getSelectedTagIds();
+      
+      let url = `/api/notes?sort_by=${sortBy}`;
+      if (selectedTagIds.length > 0) {
+        url += '&tag_ids=' + selectedTagIds.join(',');
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
       displayNotes(data.notes);
     } catch (error) {
@@ -72,25 +106,73 @@
       return;
     }
 
-    container.innerHTML = notes.map(note => `
-      <div class="note-card" data-note-id="${note.id}">
-        <div class="note-header">
-          <h3 class="note-title">${escapeHtml(note.title)}</h3>
-          <div class="note-actions">
-            <button class="action-btn edit-btn" onclick="editNote(${note.id})">Edit</button>
-            <button class="action-btn delete-btn" onclick="deleteNote(${note.id})">Delete</button>
+    container.innerHTML = notes.map(note => {
+      const tagsHtml = note.tags && note.tags.length > 0 
+        ? note.tags.map(tag => `<span class="tag">${escapeHtml(tag.name)}</span>`).join('')
+        : '';
+      
+      return `
+        <div class="note-card" data-note-id="${note.id}">
+          <div class="note-header">
+            <h3 class="note-title">${escapeHtml(note.title)}</h3>
+            <div class="note-actions">
+              <button class="action-btn edit-btn" onclick="editNote(${note.id})">Edit</button>
+              <button class="action-btn delete-btn" onclick="deleteNote(${note.id})">Delete</button>
+            </div>
           </div>
+          <p class="note-preview">${escapeHtml(note.content.substring(0, 100))}</p>
+          ${tagsHtml ? `<div class="note-tags-display">${tagsHtml}</div>` : ''}
+          <p class="note-meta">Updated: ${new Date(note.updated_at).toLocaleDateString()}</p>
         </div>
-        <p class="note-preview">${escapeHtml(note.content.substring(0, 100))}</p>
-        <p class="note-meta">Updated: ${new Date(note.updated_at).toLocaleDateString()}</p>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+  }
+
+  async function loadAvailableTags() {
+    try {
+      const response = await fetch('/api/tags');
+      const data = await response.json();
+      allTags = data.tags || [];
+      updateTagFilter();
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    }
+  }
+
+  function updateTagFilter() {
+    const tagFilterSelect = document.getElementById('tag-filter-select');
+    const currentOptions = Array.from(tagFilterSelect.options).slice(1);
+    
+    allTags.forEach(tag => {
+      const existingOption = currentOptions.find(opt => opt.value === String(tag.id));
+      if (!existingOption) {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        tagFilterSelect.appendChild(option);
+      }
+    });
+  }
+
+  function getSelectedTagIds() {
+    const tagFilterSelect = document.getElementById('tag-filter-select');
+    return Array.from(tagFilterSelect.selectedOptions)
+      .filter(opt => opt.value !== '')
+      .map(opt => parseInt(opt.value));
   }
 
   async function searchNotes() {
     const query = document.getElementById('search-input').value;
+    const sortBy = document.getElementById('sort-select').value || 'updated_at';
+    const selectedTagIds = getSelectedTagIds();
+    
     try {
-      const response = await fetch(`/api/notes?q=${encodeURIComponent(query)}`);
+      let url = `/api/notes?q=${encodeURIComponent(query)}&sort_by=${sortBy}`;
+      if (selectedTagIds.length > 0) {
+        url += '&tag_ids=' + selectedTagIds.join(',');
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
       displayNotes(data.notes);
     } catch (error) {
@@ -108,6 +190,10 @@
       document.getElementById('note-content').value = note.content;
       document.getElementById('modal-title').textContent = 'Edit Note';
       currentEditingNoteId = noteId;
+      
+      // Load tags for this note
+      selectedTags = new Set(note.tags ? note.tags.map(t => t.id) : []);
+      updateAvailableTagsDisplay();
       
       document.getElementById('note-modal').style.display = 'flex';
     } catch (error) {
@@ -137,13 +223,93 @@
     document.getElementById('note-title').value = '';
     document.getElementById('note-content').value = '';
     document.getElementById('modal-title').textContent = 'New Note';
+    document.getElementById('new-tag-input').value = '';
     currentEditingNoteId = null;
+    selectedTags = new Set();
+    updateAvailableTagsDisplay();
     document.getElementById('note-modal').style.display = 'flex';
   }
 
   function closeNoteModal() {
     document.getElementById('note-modal').style.display = 'none';
     currentEditingNoteId = null;
+    selectedTags = new Set();
+  }
+
+  function updateAvailableTagsDisplay() {
+    const container = document.getElementById('available-tags');
+    const noteTagsContainer = document.getElementById('note-tags');
+    
+    container.innerHTML = allTags.map(tag => `
+      <label class="tag-checkbox">
+        <input type="checkbox" value="${tag.id}" onchange="toggleTag(${tag.id})" ${selectedTags.has(tag.id) ? 'checked' : ''}>
+        ${escapeHtml(tag.name)}
+      </label>
+    `).join('');
+    
+    noteTagsContainer.innerHTML = Array.from(selectedTags).map(tagId => {
+      const tag = allTags.find(t => t.id === tagId);
+      return tag ? `
+        <span class="tag-badge">
+          ${escapeHtml(tag.name)}
+          <button type="button" class="remove-tag" onclick="removeTag(${tagId})">×</button>
+        </span>
+      ` : '';
+    }).join('');
+  }
+
+  function toggleTag(tagId) {
+    if (selectedTags.has(tagId)) {
+      selectedTags.delete(tagId);
+    } else {
+      selectedTags.add(tagId);
+    }
+    updateAvailableTagsDisplay();
+  }
+
+  function removeTag(tagId) {
+    selectedTags.delete(tagId);
+    updateAvailableTagsDisplay();
+  }
+
+  async function addNewTag() {
+    const tagInput = document.getElementById('new-tag-input');
+    const tagName = tagInput.value.trim();
+    
+    if (!tagName) {
+      alert('Please enter a tag name');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('name', tagName);
+      
+      const response = await fetch('/api/tags', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const newTag = data.tag;
+        
+        // Add to tags list if not already present
+        if (!allTags.find(t => t.id === newTag.id)) {
+          allTags.push(newTag);
+        }
+        
+        // Select the new tag
+        selectedTags.add(newTag.id);
+        tagInput.value = '';
+        updateAvailableTagsDisplay();
+      } else {
+        alert('Failed to create tag');
+      }
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      alert('Failed to create tag');
+    }
   }
 
   function debounce(func, delay) {
@@ -179,12 +345,35 @@
         body: formData
       });
 
-      if (response.ok) {
-        closeNoteModal();
-        loadNotes();
-      } else {
+      if (!response.ok) {
         alert('Failed to save note');
+        return;
       }
+
+      const noteData = await response.json();
+      const newNoteId = noteData.id || noteId;
+
+      // Handle tags
+      if (selectedTags.size > 0) {
+        const oldTags = new Set(selectedTags);
+        
+        for (const tagId of selectedTags) {
+          try {
+            const tagFormData = new FormData();
+            tagFormData.append('tag_id', tagId);
+            
+            await fetch(`/api/notes/${newNoteId}/tags`, {
+              method: 'POST',
+              body: tagFormData
+            });
+          } catch (error) {
+            console.error(`Error adding tag ${tagId}:`, error);
+          }
+        }
+      }
+
+      closeNoteModal();
+      loadNotes();
     } catch (error) {
       console.error('Error saving note:', error);
       alert('Failed to save note');
@@ -193,14 +382,34 @@
 
   // Initialize event listeners only if user is logged in
   if (user) {
-    // Load notes on page load
-    document.addEventListener('DOMContentLoaded', loadNotes);
+    // Load notes and tags on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      loadAvailableTags();
+      loadNotes();
+    });
 
     // New note button
     document.getElementById('new-note-btn').addEventListener('click', openNewNoteModal);
 
-    // Search
+    // Search with debounce
     document.getElementById('search-input').addEventListener('input', debounce(searchNotes, 500));
+
+    // Sort dropdown
+    document.getElementById('sort-select').addEventListener('change', loadNotes);
+
+    // Tag filter dropdown
+    document.getElementById('tag-filter-select').addEventListener('change', searchNotes);
+
+    // Add tag button
+    document.getElementById('add-tag-btn').addEventListener('click', addNewTag);
+
+    // New tag input - allow Enter key
+    document.getElementById('new-tag-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addNewTag();
+      }
+    });
 
     // Note form submission
     document.getElementById('note-form').addEventListener('submit', handleSaveNote);
