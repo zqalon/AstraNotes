@@ -514,3 +514,204 @@ class TestPasswordSecurity:
             response = client.post("/register", data=user_data)
             assert response.status_code == 400
             assert "8" in response.text.lower() or "password" in response.text.lower()
+
+
+class TestNoteLifecycleWorkflows:
+    """Tests for complete note lifecycle workflows (F-002)."""
+
+    def test_comprehensive_note_workflow(self, client):
+        """Complete workflow: create → update → delete → restore."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        # Create note
+        create_response = client.post(
+            "/api/notes",
+            data={"title": "Working Note", "content": "Initial content"},
+        )
+        assert create_response.status_code == 200
+        note_id = create_response.json()["id"]
+        
+        # Verify created
+        get_response = client.get(f"/api/notes/{note_id}")
+        assert get_response.status_code == 200
+        assert get_response.json()["title"] == "Working Note"
+        
+        # Update note
+        update_response = client.put(
+            f"/api/notes/{note_id}",
+            data={"title": "Updated Note", "content": "Updated content"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["title"] == "Updated Note"
+        
+        # Verify update
+        get_response = client.get(f"/api/notes/{note_id}")
+        assert get_response.json()["content"] == "Updated content"
+        
+        # Delete note
+        delete_response = client.delete(f"/api/notes/{note_id}")
+        assert delete_response.status_code == 200
+        
+        # Verify deleted (not in list)
+        list_response = client.get("/api/notes")
+        assert note_id not in [n["id"] for n in list_response.json()["notes"]]
+        
+        # Restore note
+        restore_response = client.post(f"/api/notes/{note_id}/restore")
+        assert restore_response.status_code == 200
+        
+        # Verify restored
+        list_response = client.get("/api/notes")
+        assert note_id in [n["id"] for n in list_response.json()["notes"]]
+
+    def test_note_deletion_workflow_with_multiple_notes(self, client):
+        """Workflow: create multiple notes, selectively delete and restore."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        # Create multiple notes
+        note_ids = []
+        for i in range(5):
+            response = client.post(
+                "/api/notes",
+                data={"title": f"Note {i}", "content": f"Content {i}"},
+            )
+            note_ids.append(response.json()["id"])
+        
+        # Delete every other note (indices 1, 3)
+        for i in [1, 3]:
+            client.delete(f"/api/notes/{note_ids[i]}")
+        
+        # Verify list shows only active notes
+        list_response = client.get("/api/notes")
+        active_ids = [n["id"] for n in list_response.json()["notes"]]
+        assert len(active_ids) == 3
+        assert note_ids[1] not in active_ids
+        assert note_ids[3] not in active_ids
+        
+        # Restore one deleted note
+        client.post(f"/api/notes/{note_ids[1]}/restore")
+        
+        # Verify list now shows 4 notes
+        list_response = client.get("/api/notes")
+        active_ids = [n["id"] for n in list_response.json()["notes"]]
+        assert len(active_ids) == 4
+
+    def test_note_operations_maintain_data_integrity(self, client):
+        """Note operations should maintain data integrity."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        original_title = "Important Note"
+        original_content = "This is very important content that should not be lost"
+        
+        # Create note
+        create_response = client.post(
+            "/api/notes",
+            data={"title": original_title, "content": original_content},
+        )
+        note_id = create_response.json()["id"]
+        original_created_at = create_response.json()["created_at"]
+        
+        # Delete and restore
+        client.delete(f"/api/notes/{note_id}")
+        client.post(f"/api/notes/{note_id}/restore")
+        
+        # Verify all data is intact
+        get_response = client.get(f"/api/notes/{note_id}")
+        restored_note = get_response.json()
+        
+        assert restored_note["title"] == original_title
+        assert restored_note["content"] == original_content
+        assert restored_note["created_at"] == original_created_at
+        assert restored_note["is_deleted"] is False
+
+    def test_search_behavior_with_delete_operations(self, client):
+        """Search should respect deletion state."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        # Create searchable notes
+        response1 = client.post(
+            "/api/notes",
+            data={"title": "Python Tutorial", "content": "Learn Python programming"},
+        )
+        response2 = client.post(
+            "/api/notes",
+            data={"title": "Python Advanced", "content": "Advanced Python topics"},
+        )
+        note_id_1 = response1.json()["id"]
+        note_id_2 = response2.json()["id"]
+        
+        # Search finds both
+        search_response = client.get("/api/notes", params={"q": "Python"})
+        assert len(search_response.json()["notes"]) == 2
+        
+        # Delete one
+        client.delete(f"/api/notes/{note_id_1}")
+        
+        # Search now finds only one
+        search_response = client.get("/api/notes", params={"q": "Python"})
+        results = search_response.json()["notes"]
+        assert len(results) == 1
+        assert results[0]["id"] == note_id_2
+        
+        # Restore and search finds both again
+        client.post(f"/api/notes/{note_id_1}/restore")
+        search_response = client.get("/api/notes", params={"q": "Python"})
+        assert len(search_response.json()["notes"]) == 2
+
+    def test_note_state_transitions(self, client):
+        """Test valid note state transitions."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        # Create note (state: active)
+        response = client.post(
+            "/api/notes", data={"title": "State Test", "content": "Content"}
+        )
+        note_id = response.json()["id"]
+        assert response.json()["is_deleted"] is False
+        
+        # Delete (state: deleted)
+        delete_response = client.delete(f"/api/notes/{note_id}")
+        assert delete_response.status_code == 200
+        
+        # Restore (state: active again)
+        restore_response = client.post(f"/api/notes/{note_id}/restore")
+        assert restore_response.status_code == 200
+        
+        # Verify final state
+        get_response = client.get(f"/api/notes/{note_id}")
+        assert get_response.json()["is_deleted"] is False
+
+    def test_deletion_isolation_between_users(self, client):
+        """Deletion by one user should not affect other users' notes."""
+        # User 1: Create notes
+        user1_data = get_unique_user_data()
+        client.post("/register", data=user1_data)
+        response = client.post(
+            "/api/notes", data={"title": "User1 Note", "content": "Content"}
+        )
+        user1_note_id = response.json()["id"]
+        client.get("/logout")
+        
+        # User 2: Create and delete their own note
+        user2_data = get_unique_user_data()
+        client.post("/register", data=user2_data)
+        response = client.post(
+            "/api/notes", data={"title": "User2 Note", "content": "Content"}
+        )
+        user2_note_id = response.json()["id"]
+        client.delete(f"/api/notes/{user2_note_id}")
+        
+        # User 1: Verify their note is still accessible
+        client2 = TestClient(app)
+        client2.post("/login", data={
+            "identifier": user1_data["username"],
+            "password": user1_data["password"],
+        })
+        response = client2.get(f"/api/notes/{user1_note_id}")
+        assert response.status_code == 200
+        assert response.json()["title"] == "User1 Note"

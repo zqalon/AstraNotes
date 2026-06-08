@@ -379,3 +379,168 @@ class TestSearchFunctionality:
         results = search_notes(test_user_with_notes.id, q="Python")
         for note in results:
             assert note.user_id == test_user_with_notes.id
+
+    def test_search_by_date_range(self, test_user_with_notes):
+        """Should filter notes by date range (F-003b)."""
+        now = datetime.utcnow()
+        future = now + timedelta(days=1)
+        past = now - timedelta(days=1)
+        
+        # Search within date range that includes all notes
+        results = search_notes(
+            test_user_with_notes.id,
+            q="",
+            date_from=past,
+            date_to=future,
+            include_deleted=False
+        )
+        assert len(results) == 4
+
+    def test_search_date_from_filter(self, test_user_with_notes):
+        """Should filter notes created after date_from."""
+        now = datetime.utcnow()
+        future = now + timedelta(days=1)
+        
+        results = search_notes(
+            test_user_with_notes.id,
+            q="",
+            date_from=future,
+            include_deleted=False
+        )
+        # Should have no results since all notes were created before future date
+        assert len(results) == 0
+
+    def test_search_date_to_filter(self, test_user_with_notes):
+        """Should filter notes created before date_to."""
+        now = datetime.utcnow()
+        past = now - timedelta(days=1)
+        
+        results = search_notes(
+            test_user_with_notes.id,
+            q="",
+            date_to=past,
+            include_deleted=False
+        )
+        # Should have no results since all notes were created after past date
+        assert len(results) == 0
+
+
+class TestNoteEdgeCases:
+    """Tests for edge cases in note operations."""
+
+    @pytest.fixture
+    def test_user(self, session):
+        """Create a test user for note operations."""
+        return create_user("edge@example.com", "edgeuser", "SecurePass123")
+
+    def test_create_note_with_very_long_title(self, test_user):
+        """Should create note with very long title."""
+        long_title = "A" * 10000
+        note = create_note(test_user.id, long_title, "Content")
+        assert note is not None
+        assert len(note.title) == 10000
+
+    def test_create_note_with_very_long_content(self, test_user):
+        """Should create note with very long content."""
+        long_content = "Lorem ipsum " * 10000
+        note = create_note(test_user.id, "Title", long_content)
+        assert note is not None
+        assert len(note.content) == len(long_content)
+
+    def test_create_note_with_special_characters(self, test_user):
+        """Should create note with special characters."""
+        special_title = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
+        special_content = "émojis: 🎉 🚀 ✨ | symbols: © ® ™"
+        note = create_note(test_user.id, special_title, special_content)
+        assert note is not None
+        assert note.title == special_title
+        assert note.content == special_content
+
+    def test_create_note_with_unicode(self, test_user):
+        """Should create note with unicode characters."""
+        unicode_title = "Привет мир 你好世界 مرحبا بالعالم"
+        unicode_content = "日本語、中文、한글、العربية"
+        note = create_note(test_user.id, unicode_title, unicode_content)
+        assert note is not None
+        assert note.title == unicode_title
+        assert note.content == unicode_content
+
+    def test_create_note_with_newlines(self, test_user):
+        """Should create note preserving newlines."""
+        content_with_newlines = "Line 1\nLine 2\nLine 3\n\nMultiple\n\n\nNewlines"
+        note = create_note(test_user.id, "Multiline", content_with_newlines)
+        assert note is not None
+        assert note.content == content_with_newlines
+
+    def test_update_note_removes_content(self, test_user):
+        """Should allow clearing note content."""
+        note = create_note(test_user.id, "Title", "Original content")
+        updated = update_note(note.id, test_user.id, content="")
+        assert updated is not None
+        assert updated.content == ""
+
+    def test_multiple_operations_on_same_note(self, test_user):
+        """Should handle multiple create, update, delete, restore operations."""
+        note = create_note(test_user.id, "Title", "Content")
+        note_id = note.id
+        
+        # Update
+        update_note(note_id, test_user.id, title="Updated")
+        updated = get_note_by_id(note_id, test_user.id)
+        assert updated.title == "Updated"
+        
+        # Delete
+        delete_note(note_id, test_user.id)
+        deleted = get_note_by_id(note_id, test_user.id)
+        assert deleted.is_deleted is True
+        
+        # Restore
+        restore_note(note_id, test_user.id)
+        restored = get_note_by_id(note_id, test_user.id)
+        assert restored.is_deleted is False
+
+    def test_note_timestamps_are_set(self, test_user):
+        """Note timestamps should be set automatically."""
+        before = datetime.utcnow()
+        note = create_note(test_user.id, "Title", "Content")
+        after = datetime.utcnow()
+        
+        assert note.created_at is not None
+        assert note.updated_at is not None
+        assert before <= note.created_at <= after
+        assert before <= note.updated_at <= after
+
+    def test_note_updated_at_changes_on_update(self, test_user):
+        """Note updated_at should change when note is modified."""
+        note = create_note(test_user.id, "Title", "Content")
+        original_updated_at = note.updated_at
+        
+        # Small delay to ensure timestamp difference
+        import time
+        time.sleep(0.01)
+        
+        updated_note = update_note(note.id, test_user.id, title="New Title")
+        assert updated_note.updated_at >= original_updated_at
+
+    def test_delete_preserves_timestamps(self, test_user):
+        """Deleting note should not change created_at."""
+        note = create_note(test_user.id, "Title", "Content")
+        created_at = note.created_at
+        
+        deleted_note = delete_note(note.id, test_user.id)
+        assert deleted_note.created_at == created_at
+
+    def test_get_nonexistent_note_returns_none(self, test_user):
+        """Should return None for non-existent note."""
+        result = get_note_by_id(99999, test_user.id)
+        assert result is None
+
+    def test_delete_nonexistent_note_returns_false(self, test_user):
+        """Should return False when deleting non-existent note."""
+        result = delete_note(99999, test_user.id)
+        assert result is False
+
+    def test_restore_nonexistent_note_returns_false(self, test_user):
+        """Should return False when restoring non-existent note."""
+        result = restore_note(99999, test_user.id)
+        assert result is False

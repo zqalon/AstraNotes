@@ -7,10 +7,9 @@ from sqlmodel import Session, select
 from astranotes.db import get_engine
 from astranotes.models import User, Note
 
-# Use argon2 for new passwords, support both argon2 and bcrypt for verification
-# This allows existing bcrypt-hashed passwords to work while new ones use argon2
+# Use argon2 for password hashing (modern, no length limits)
 pwd_context = CryptContext(
-    schemes=["argon2", "bcrypt"],
+    schemes=["argon2"],
     deprecated="auto"
 )
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

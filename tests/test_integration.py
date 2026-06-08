@@ -441,6 +441,112 @@ class TestNoteDeleteEndpoint:
         response = client.delete(f"/api/notes/{note_id}")
         assert response.status_code == 404
 
+    def test_delete_preserves_note_data(self, client):
+        """Soft delete should preserve note data."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        create_response = client.post(
+            "/api/notes",
+            data={"title": "Data Test", "content": "Important content"}
+        )
+        note_id = create_response.json()["id"]
+        original_data = create_response.json()
+        
+        client.delete(f"/api/notes/{note_id}")
+        
+        # Restore and verify data is intact
+        client.post(f"/api/notes/{note_id}/restore")
+        restored_response = client.get(f"/api/notes/{note_id}")
+        
+        assert restored_response.json()["title"] == original_data["title"]
+        assert restored_response.json()["content"] == original_data["content"]
+
+    def test_double_delete_returns_error(self, client):
+        """Deleting already deleted note should return 404."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        create_response = client.post(
+            "/api/notes", data={"title": "Double Delete", "content": "Content"}
+        )
+        note_id = create_response.json()["id"]
+        
+        # First delete should succeed
+        response1 = client.delete(f"/api/notes/{note_id}")
+        assert response1.status_code == 200
+        
+        # Second delete should fail (note not visible to user)
+        response2 = client.delete(f"/api/notes/{note_id}")
+        assert response2.status_code == 404
+
+    def test_restore_nonexistent_note(self, client):
+        """POST /api/notes/{id}/restore should return 404 for non-existent note."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        response = client.post("/api/notes/99999/restore")
+        assert response.status_code == 404
+
+    def test_cannot_restore_other_users_note(self, client):
+        """User should not restore other user's notes."""
+        # Create first user and note
+        user1_data = get_unique_user_data()
+        client.post("/register", data=user1_data)
+        create_response = client.post(
+            "/api/notes", data={"title": "Protected", "content": "Content"}
+        )
+        note_id = create_response.json()["id"]
+        client.delete(f"/api/notes/{note_id}")
+        client.get("/logout")
+        
+        # Create second user and try to restore first user's note
+        user2_data = get_unique_user_data()
+        client.post("/register", data=user2_data)
+        response = client.post(f"/api/notes/{note_id}/restore")
+        assert response.status_code == 404
+
+    def test_restore_active_note_returns_200(self, client):
+        """Restoring non-deleted note should return success."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        create_response = client.post(
+            "/api/notes", data={"title": "Active", "content": "Content"}
+        )
+        note_id = create_response.json()["id"]
+        
+        # Try to restore non-deleted note
+        response = client.post(f"/api/notes/{note_id}/restore")
+        assert response.status_code == 200
+
+    def test_multiple_delete_restore_cycles(self, client):
+        """Should handle multiple delete/restore cycles."""
+        user_data = get_unique_user_data()
+        client.post("/register", data=user_data)
+        
+        create_response = client.post(
+            "/api/notes", data={"title": "Cycle Test", "content": "Content"}
+        )
+        note_id = create_response.json()["id"]
+        
+        for _ in range(3):
+            # Delete
+            del_response = client.delete(f"/api/notes/{note_id}")
+            assert del_response.status_code == 200
+            
+            # Verify deleted
+            list_response = client.get("/api/notes")
+            assert note_id not in [n["id"] for n in list_response.json()["notes"]]
+            
+            # Restore
+            restore_response = client.post(f"/api/notes/{note_id}/restore")
+            assert restore_response.status_code == 200
+            
+            # Verify restored
+            list_response = client.get("/api/notes")
+            assert note_id in [n["id"] for n in list_response.json()["notes"]]
+
 
 class TestSearchEndpoint:
     """Tests for search endpoint (F-003b)."""
