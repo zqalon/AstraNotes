@@ -140,9 +140,3 @@ rm data/notes.db
 ├── requirements.txt         # Python dependencies
 └── Makefile                 # Build and development tasks
 ```
-
-## Next Steps
-
-- Check [docs/getting_started.md](docs/getting_started.md) for application architecture
-- Review [tests/](tests/) for testing patterns
-- See [Planning/IMPLEMENTATION_STATUS.md](Planning/MVP_Status/IMPLEMENTATION_STATUS.md) for feature status
