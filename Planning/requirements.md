@@ -17,7 +17,7 @@
 **F-001: User Authentication & Authorization**
    - F-001a: User registration with email/username and password ✅
    - F-001b: Secure login/logout functionality ✅
-   - F-001d: Session management with configurable timeouts ✅
+   - F-001c: Session management with configurable timeouts ✅
 
 **F-002: Note CRUD Operations**
    - F-002a: Create new notes with title, content, and optional metadata ✅
@@ -40,7 +40,7 @@
 
 **NF-001: User Experience**
    - NF-001a: Intuitive interface design ✅
-   - NF-001d: Multi-language support (future) 
+   - NF-001b: Multi-language support (future) 
 
 **NF-002: Maintainability**
    - NF-002a: Modular architecture for easy feature addition ✅
